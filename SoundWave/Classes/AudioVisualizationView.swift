@@ -161,7 +161,7 @@ public class AudioVisualizationView: BaseNibView {
             lastPosition = Int(position)
             self.meteringLevelsClusteredArray.append(h)
         }
-        self.setNeedsDisplay()
+//        self.setNeedsDisplay()
         return self.meteringLevelsClusteredArray
     }
 
