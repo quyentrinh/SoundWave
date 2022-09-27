@@ -367,7 +367,7 @@ public class AudioVisualizationView: BaseNibView {
     }
 
     private var maximumBarHeight: CGFloat {
-        return self.frame.size.height / 2.0
+        return self.frame.size.height
     }
 
     private var maximumNumberBars: Int {
