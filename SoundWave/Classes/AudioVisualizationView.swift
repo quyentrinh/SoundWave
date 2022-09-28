@@ -172,6 +172,12 @@ public class AudioVisualizationView: BaseNibView {
         self.setNeedsDisplay()
     }
 
+    public func setMeteringLevelsAndRefreshDisplay(_ meteringLevels: [Float]) {
+        self.meteringLevelsClusteredArray = meteringLevels
+        self.currentGradientPercentage = 0.0
+        self.setNeedsDisplay()
+    }
+
     // PRAGMA: - Play Mode Handling
 
     public func play(from url: URL) {
