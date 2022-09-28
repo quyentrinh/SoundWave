@@ -129,12 +129,12 @@ public class AudioVisualizationView: BaseNibView {
         self.setNeedsDisplay()
     }
 
-    public func scaleSoundDataToFitScreen() -> [Float] {
+    public func getScaleSoundDataToFitScreen() -> [Float] {
         if self.meteringLevelsArray.isEmpty {
             return []
         }
 
-        self.meteringLevelsClusteredArray.removeAll()
+        var result: [Float] = []
         var lastPosition: Int = 0
 
         for index in 0..<self.maximumNumberBars {
@@ -159,10 +159,18 @@ public class AudioVisualizationView: BaseNibView {
             }
 
             lastPosition = Int(position)
-            self.meteringLevelsClusteredArray.append(h)
+            result.append(h)
         }
-//        self.setNeedsDisplay()
-        return self.meteringLevelsClusteredArray
+        return result
+    }
+
+    public func scaleSoundDataToFitScreen() {
+        if self.meteringLevelsArray.isEmpty {
+            return
+        }
+        self.meteringLevelsClusteredArray.removeAll()
+        self.meteringLevelsClusteredArray.append(contentsOf: getScaleSoundDataToFitScreen())
+        self.setNeedsDisplay()
     }
 
     // PRAGMA: - Play Mode Handling
