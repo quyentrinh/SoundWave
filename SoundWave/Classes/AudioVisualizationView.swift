@@ -67,7 +67,6 @@ public class AudioVisualizationView: BaseNibView {
             if let meteringLevels = self.meteringLevels {
                 self.meteringLevelsClusteredArray = meteringLevels
                 self.currentGradientPercentage = 0.0
-                _ = self.scaleSoundDataToFitScreen()
             }
         }
     }
