@@ -176,6 +176,8 @@ public class AudioVisualizationView: BaseNibView {
         self.meteringLevels = meteringLevels
         self.meteringLevelsClusteredArray = meteringLevels
         self.currentGradientPercentage = 0.0
+        self.swapColor()
+        self.needSwapColor = false
         self.setNeedsDisplay()
     }
 
