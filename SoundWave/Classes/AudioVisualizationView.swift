@@ -8,6 +8,11 @@
 import AVFoundation
 import UIKit
 
+protocol AudioVisualizationViewDelegate: AnyObject {
+    func progressDotWillBeginDragging(_ visualizationView: AudioVisualizationView)
+    func progressDotDidEndDragigng(_ visualizationView: AudioVisualizationView, progress: Float)
+}
+
 public class AudioVisualizationView: BaseNibView {
     public enum AudioVisualizationMode {
         case read
@@ -40,11 +45,14 @@ public class AudioVisualizationView: BaseNibView {
             self.setNeedsDisplay()
         }
     }
-
+    public var progressDotColor: UIColor = .orange
+    public var progressDotSize: CGSize = CGSize(width: 10.0, height: 10.0)
     public var audioVisualizationMode: AudioVisualizationMode = .read
 
     public var audioVisualizationTimeInterval: TimeInterval = 0.05 // Time interval between each metering bar representation
 
+    weak var delegate: AudioVisualizationViewDelegate?
+    
     // Specify a `gradientPercentage` to have the width of gradient be that percentage of the view width (starting from left)
     // The rest of the screen will be filled by `self.gradientStartColor` to display nicely.
     // Do not specify any `gradientPercentage` for gradient calculating fitting size automatically.
@@ -61,7 +69,10 @@ public class AudioVisualizationView: BaseNibView {
     }
     private var needSwapColor: Bool = true
     private var playChronometer: Chronometer?
-
+    private var timeDuration: TimeInterval = 0.0
+    private var slider: UISlider!
+    private var shouldResume: Bool = false
+    private var currentProgress: Float?
     public var meteringLevels: [Float]? {
         didSet {
             if let meteringLevels = self.meteringLevels {
@@ -91,12 +102,25 @@ public class AudioVisualizationView: BaseNibView {
 
     override public init(frame: CGRect) {
         super.init(frame: frame)
+        createAudioSlider()
     }
 
     required public init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
+        createAudioSlider()
     }
 
+    public override func layoutSubviews() {
+        super.layoutSubviews()
+        let selfBounds = self.bounds
+        self.slider.frame = CGRect(
+            x: -progressDotSize.width*0.5,
+            y: (selfBounds.height - progressDotSize.height)*0.5,
+            width: selfBounds.width + progressDotSize.width,
+            height: progressDotSize.height
+        )
+    }
+    
     override public func draw(_ rect: CGRect) {
         super.draw(rect)
 
@@ -110,6 +134,10 @@ public class AudioVisualizationView: BaseNibView {
         self.currentGradientPercentage = nil
         self.meteringLevelsClusteredArray.removeAll()
         self.meteringLevelsArray.removeAll()
+        self.timeDuration = 0.0
+        self.shouldResume = false
+        self.currentProgress = nil
+        self.slider.isHidden = true
         if !needSwapColor {
             self.swapColor()
             self.needSwapColor = true
@@ -169,6 +197,7 @@ public class AudioVisualizationView: BaseNibView {
         }
         self.meteringLevelsClusteredArray.removeAll()
         self.meteringLevelsClusteredArray.append(contentsOf: getScaleSoundDataToFitScreen())
+        self.slider.isHidden = false
         self.setNeedsDisplay()
     }
 
@@ -176,26 +205,13 @@ public class AudioVisualizationView: BaseNibView {
         self.meteringLevels = meteringLevels
         self.meteringLevelsClusteredArray = meteringLevels
         self.currentGradientPercentage = 0.0
+        self.slider.isHidden = false
         self.swapColor()
         self.needSwapColor = false
         self.setNeedsDisplay()
     }
 
     // PRAGMA: - Play Mode Handling
-
-    public func play(from url: URL) {
-        guard self.audioVisualizationMode == .read else {
-            fatalError("trying to read audio visualization in write mode")
-        }
-
-        AudioContext.load(fromAudioURL: url) { audioContext in
-            guard let audioContext = audioContext else {
-                fatalError("Couldn't create the audioContext")
-            }
-            self.meteringLevels = audioContext.render(targetSamples: 100)
-            self.play(for: 2)
-        }
-    }
 
     public func play(for duration: TimeInterval) {
         guard self.audioVisualizationMode == .read else {
@@ -209,12 +225,21 @@ public class AudioVisualizationView: BaseNibView {
             swapColor()
             needSwapColor = false
         }
+
         if let currentChronometer = self.playChronometer {
+            if let percentage = self.currentProgress {
+                currentChronometer.timerCurrentValue = Double(percentage)*timeDuration
+                self.currentProgress = nil
+            }
             currentChronometer.start() // resume current
             return
         }
-
+        self.timeDuration = duration
         self.playChronometer = Chronometer(withTimeInterval: self.audioVisualizationTimeInterval)
+        if let percentage = self.currentProgress {
+            self.playChronometer?.timerCurrentValue = Double(percentage)*timeDuration
+            self.currentProgress = nil
+        }
         self.playChronometer?.start(shouldFire: false)
 
         self.playChronometer?.timerDidUpdate = { [weak self] timerDuration in
@@ -226,8 +251,9 @@ public class AudioVisualizationView: BaseNibView {
                 this.stop()
                 return
             }
-
-            this.currentGradientPercentage = Float(timerDuration) / Float(duration)
+            let currentProgress = Float(timerDuration) / Float(duration)
+            this.currentGradientPercentage = currentProgress
+            this.slider.value = currentProgress
             this.setNeedsDisplay()
         }
     }
@@ -242,9 +268,79 @@ public class AudioVisualizationView: BaseNibView {
     public func stop() {
         self.playChronometer?.stop()
         self.playChronometer = nil
-        self.currentGradientPercentage = 1.0
+        self.timeDuration = 0.0
+        self.shouldResume = false
+        self.slider.value = 0.0
+        self.currentProgress = nil
+        self.currentGradientPercentage = 0.0
         self.setNeedsDisplay()
-        self.currentGradientPercentage = nil
+        if audioVisualizationMode == .write {
+            self.currentGradientPercentage = nil
+        }
+    }
+    
+    // MARK: - Slider Bar
+    private func createAudioSlider() {
+        let selfBounds = self.bounds
+        let frame = CGRect(
+            x: -progressDotSize.width*0.5,
+            y: (selfBounds.height - progressDotSize.height)*0.5,
+            width: selfBounds.width + progressDotSize.width,
+            height: progressDotSize.height
+        )
+        let slider = UISlider(frame: frame)
+        slider.isHidden = true
+        slider.minimumTrackTintColor = .clear
+        slider.maximumTrackTintColor = .clear
+        slider.tintColor = .clear
+        slider.thumbTintColor = .orange
+        slider.isUserInteractionEnabled = true
+        slider.translatesAutoresizingMaskIntoConstraints = false
+        let image = UIImage.circleImageWithColor(color: progressDotColor, size: progressDotSize)
+        slider.setThumbImage(image, for: .normal)
+        slider.setThumbImage(image, for: .highlighted)
+        
+        slider.addTarget(self, action: #selector(sliderValueDidChange(sender:event:)), for: .valueChanged)
+        
+        self.addSubview(slider)
+        self.bringSubviewToFront(slider)
+
+        slider.centerYAnchor.constraint(equalTo: self.centerYAnchor).isActive = true
+        slider.leftAnchor.constraint(equalTo: self.leftAnchor).isActive = true
+        slider.rightAnchor.constraint(equalTo: self.rightAnchor).isActive = true
+        slider.layoutIfNeeded()
+        self.slider = slider
+    }
+    
+    @objc
+    private func sliderValueDidChange(sender: UISlider, event: UIEvent) {
+        let value = sender.value
+        if let touchEvent = event.allTouches?.first {
+            switch touchEvent.phase {
+            case .began:
+                if let chronometer = self.playChronometer, chronometer.isPlaying {
+                    chronometer.pause()
+                    self.shouldResume = true
+                }
+                self.delegate?.progressDotWillBeginDragging(self)
+            case .moved:
+                self.currentGradientPercentage = value
+                self.setNeedsDisplay()
+            case .ended:
+                if let chronometer = self.playChronometer {
+                    chronometer.timerCurrentValue = TimeInterval(value*Float(timeDuration))
+                    if shouldResume {
+                        chronometer.start()
+                        self.shouldResume = false
+                    }
+                } else {
+                    self.currentProgress = value
+                }
+                self.delegate?.progressDotDidEndDragigng(self, progress: value)
+            default:
+                break
+            }
+        }
     }
 
     // MARK: - Mask + Gradient

@@ -34,3 +34,23 @@ extension AVAudioFile {
 		return result
 	}
 }
+
+extension UIImage {
+    class func circleImageWithColor(color: UIColor, size: CGSize) -> UIImage? {
+        UIGraphicsBeginImageContextWithOptions(size, false, 0.0)
+        guard let context = UIGraphicsGetCurrentContext() else { return nil }
+        context.setFillColor(color.cgColor)
+        let radius: CGFloat = size.width*0.5
+        let maskPath = UIBezierPath(roundedRect: CGRect(origin: .zero, size: size),
+                                    byRoundingCorners: .allCorners,
+                                    cornerRadii: CGSize(width: radius, height: radius)
+        )
+        maskPath.addClip()
+        maskPath.fill()
+
+        let image = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+
+        return image
+    }
+}
