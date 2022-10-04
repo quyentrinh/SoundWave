@@ -8,9 +8,10 @@
 import AVFoundation
 import UIKit
 
-protocol AudioVisualizationViewDelegate: AnyObject {
+public protocol AudioVisualizationViewDelegate: AnyObject {
     func progressDotWillBeginDragging(_ visualizationView: AudioVisualizationView)
-    func progressDotDidEndDragigng(_ visualizationView: AudioVisualizationView, progress: Float)
+    func progressDotDragging(_ visualizationView: AudioVisualizationView, currentProgress: Float)
+    func progressDotDidEndDragging(_ visualizationView: AudioVisualizationView, currentProgress: Float, shouldResume: Bool)
 }
 
 public class AudioVisualizationView: BaseNibView {
@@ -45,13 +46,15 @@ public class AudioVisualizationView: BaseNibView {
             self.setNeedsDisplay()
         }
     }
+    
+    public var controlActionEnabled: Bool = false
     public var progressDotColor: UIColor = .orange
     public var progressDotSize: CGSize = CGSize(width: 10.0, height: 10.0)
     public var audioVisualizationMode: AudioVisualizationMode = .read
 
     public var audioVisualizationTimeInterval: TimeInterval = 0.05 // Time interval between each metering bar representation
 
-    weak var delegate: AudioVisualizationViewDelegate?
+    public weak var delegate: AudioVisualizationViewDelegate?
     
     // Specify a `gradientPercentage` to have the width of gradient be that percentage of the view width (starting from left)
     // The rest of the screen will be filled by `self.gradientStartColor` to display nicely.
@@ -134,8 +137,8 @@ public class AudioVisualizationView: BaseNibView {
         self.currentGradientPercentage = nil
         self.meteringLevelsClusteredArray.removeAll()
         self.meteringLevelsArray.removeAll()
-        self.timeDuration = 0.0
         self.shouldResume = false
+        self.timeDuration = 0.0
         self.currentProgress = nil
         self.slider.isHidden = true
         if !needSwapColor {
@@ -149,7 +152,8 @@ public class AudioVisualizationView: BaseNibView {
 
     public func add(meteringLevel: Float) {
         guard self.audioVisualizationMode == .write else {
-            fatalError("trying to populate audio visualization view in read mode")
+            print("AudioVisualizationView: trying to populate audio visualization view in read mode")
+            return
         }
 
         self.meteringLevelsArray.append(meteringLevel)
@@ -197,7 +201,9 @@ public class AudioVisualizationView: BaseNibView {
         }
         self.meteringLevelsClusteredArray.removeAll()
         self.meteringLevelsClusteredArray.append(contentsOf: getScaleSoundDataToFitScreen())
-        self.slider.isHidden = false
+        if controlActionEnabled {
+            self.slider.isHidden = false
+        }
         self.setNeedsDisplay()
     }
 
@@ -205,7 +211,9 @@ public class AudioVisualizationView: BaseNibView {
         self.meteringLevels = meteringLevels
         self.meteringLevelsClusteredArray = meteringLevels
         self.currentGradientPercentage = 0.0
-        self.slider.isHidden = false
+        if controlActionEnabled {
+            self.slider.isHidden = false
+        }
         self.swapColor()
         self.needSwapColor = false
         self.setNeedsDisplay()
@@ -215,11 +223,13 @@ public class AudioVisualizationView: BaseNibView {
 
     public func play(for duration: TimeInterval) {
         guard self.audioVisualizationMode == .read else {
-            fatalError("trying to read audio visualization in write mode")
+            print("AudioVisualizationView: trying to read audio visualization in write mode")
+            return
         }
 
         guard self.meteringLevels != nil else {
-            fatalError("trying to read audio visualization of non initialized sound record")
+            print("AudioVisualizationView: trying to read audio visualization of non initialized sound record")
+            return
         }
         if needSwapColor {
             swapColor()
@@ -260,7 +270,8 @@ public class AudioVisualizationView: BaseNibView {
 
     public func pause() {
         guard let chronometer = self.playChronometer, chronometer.isPlaying else {
-            fatalError("trying to pause audio visualization view when not playing")
+            print("AudioVisualizationView: trying to pause audio visualization view when not playing")
+            return
         }
         self.playChronometer?.pause()
     }
@@ -326,17 +337,19 @@ public class AudioVisualizationView: BaseNibView {
             case .moved:
                 self.currentGradientPercentage = value
                 self.setNeedsDisplay()
+                self.delegate?.progressDotDragging(self, currentProgress: value)
             case .ended:
                 if let chronometer = self.playChronometer {
                     chronometer.timerCurrentValue = TimeInterval(value*Float(timeDuration))
+                    self.delegate?.progressDotDidEndDragging(self, currentProgress: value, shouldResume: shouldResume)
                     if shouldResume {
                         chronometer.start()
                         self.shouldResume = false
                     }
                 } else {
                     self.currentProgress = value
+                    self.delegate?.progressDotDidEndDragging(self, currentProgress: value, shouldResume: false)
                 }
-                self.delegate?.progressDotDidEndDragigng(self, progress: value)
             default:
                 break
             }
